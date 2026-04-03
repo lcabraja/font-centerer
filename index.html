@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Font Centerer</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: #000000;
+      }
+
+      main {
+        width: min(1100px, 100%);
+        margin: 0 auto;
+        padding: 16px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .row.secondary {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+      }
+
+      .combo {
+        position: relative;
+      }
+
+      .combo-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0;
+      }
+
+      .select-wrap {
+        position: relative;
+      }
+
+      input,
+      select,
+      button,
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #000000;
+        border-radius: 0;
+        background: #ffffff;
+        color: #000000;
+        font: inherit;
+        appearance: none;
+      }
+
+      button {
+        width: auto;
+        cursor: pointer;
+      }
+
+      input:focus,
+      select:focus,
+      button:focus,
+      textarea:focus {
+        outline: 1px solid #000000;
+        outline-offset: 0;
+      }
+
+      .combo-toggle,
+      .icon-button {
+        width: 42px;
+        min-width: 42px;
+        min-height: 42px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+      }
+
+      .combo-toggle {
+        border-left: 0;
+      }
+
+      .select-wrap select {
+        padding-right: 42px;
+      }
+
+      .select-arrow {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-left: 1px solid #000000;
+        pointer-events: none;
+      }
+
+      .combo-list {
+        position: absolute;
+        top: calc(100% - 1px);
+        left: 0;
+        right: 0;
+        max-height: 240px;
+        overflow: auto;
+        border: 1px solid #000000;
+        background: #ffffff;
+        z-index: 10;
+      }
+
+      .combo-list[hidden] {
+        display: none;
+      }
+
+      .combo-option {
+        padding: 10px 12px;
+        border-bottom: 1px solid #000000;
+        cursor: pointer;
+      }
+
+      .combo-option:last-child {
+        border-bottom: 0;
+      }
+
+      .combo-option[aria-selected="true"],
+      .combo-option:hover {
+        background: #f4f4f4;
+      }
+
+      .preview {
+        position: relative;
+        min-height: 360px;
+        border: 1px solid #000000;
+        background: #ffffff;
+        overflow: hidden;
+      }
+
+      #preview-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .note {
+        min-height: 20px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
+      }
+
+      dialog {
+        width: min(520px, calc(100% - 24px));
+        border: 1px solid #000000;
+        border-radius: 0;
+        padding: 16px;
+      }
+
+      dialog::backdrop {
+        background: rgba(255, 255, 255, 0.9);
+      }
+
+      .modal-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .field-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      textarea {
+        min-height: 76px;
+        resize: vertical;
+      }
+
+      #measurement-stage {
+        position: absolute;
+        left: -99999px;
+        top: 0;
+        visibility: hidden;
+        white-space: pre;
+        pointer-events: none;
+      }
+
+      #measurement-line {
+        display: inline-block;
+        line-height: normal;
+      }
+
+      #baseline-marker {
+        display: inline-block;
+        width: 0;
+        height: 1px;
+        vertical-align: baseline;
+      }
+
+      @media (max-width: 720px) {
+        .row,
+        .row.secondary {
+          grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        .row > .combo,
+        .row.secondary > input,
+        .row.secondary > .select-wrap {
+          grid-column: 1 / -1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="stack">
+        <div class="row">
+          <div class="combo">
+            <label class="sr-only" for="font-search">Font</label>
+            <div class="combo-main">
+              <input
+                id="font-search"
+                type="text"
+                autocomplete="off"
+                aria-autocomplete="list"
+                aria-controls="font-options"
+                aria-expanded="false"
+                role="combobox"
+                placeholder="Search a detected font"
+              />
+              <button
+                id="font-toggle"
+                class="combo-toggle"
+                type="button"
+                aria-label="Toggle font list"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 6l5 5 5-5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div
+              id="font-options"
+              class="combo-list"
+              role="listbox"
+              hidden
+            ></div>
+          </div>
+          <button
+            id="upload-file-button"
+            class="icon-button"
+            type="button"
+            title="Upload font file"
+            aria-label="Upload font file"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M8 11V2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path
+                d="M5 5l3-3 3 3"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path
+                d="M2 11v3h12v-3"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+            </svg>
+          </button>
+          <button
+            id="upload-link-button"
+            class="icon-button"
+            type="button"
+            title="Upload font from link"
+            aria-label="Upload font from link"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M6.5 9.5l3-3"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path
+                d="M5 11a2.5 2.5 0 010-5h2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path
+                d="M11 5a2.5 2.5 0 010 5H9"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <div class="row secondary">
+          <label class="sr-only" for="preview-input">Preview text</label>
+          <input
+            id="preview-input"
+            type="text"
+            value="Hamburgefontsiv"
+            placeholder="Preview text"
+          />
+          <label class="sr-only" for="metric-mode">Metric mode</label>
+          <div class="select-wrap">
+            <select id="metric-mode">
+              <option value="descent-to-ascent">descent to ascent</option>
+              <option value="baseline-to-ascent">baseline to ascent</option>
+              <option value="baseline-to-mean">baseline to mean</option>
+            </select>
+            <div class="select-arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="14" height="14">
+                <path
+                  d="M3 6l5 5 5-5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                />
+              </svg>
+            </div>
+          </div>
+          <button
+            id="edit-letter-sets"
+            class="icon-button"
+            type="button"
+            title="Edit letter sets"
+            aria-label="Edit letter sets"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M3 4.5h10M3 8h10M3 11.5h10"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <circle cx="6" cy="4.5" r="1.25" fill="#ffffff" stroke="currentColor" stroke-width="1.5" />
+              <circle cx="10" cy="8" r="1.25" fill="#ffffff" stroke="currentColor" stroke-width="1.5" />
+              <circle cx="7.5" cy="11.5" r="1.25" fill="#ffffff" stroke="currentColor" stroke-width="1.5" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="note" id="status-note" aria-live="polite"></div>
+
+        <div class="preview" id="preview-stage">
+          <canvas id="preview-canvas"></canvas>
+        </div>
+      </div>
+    </main>
+
+    <input
+      id="file-input"
+      type="file"
+      accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"
+      hidden
+    />
+
+    <dialog id="error-dialog">
+      <div class="modal-stack">
+        <div id="error-message"></div>
+        <div class="modal-actions">
+          <button id="close-error-dialog" type="button">close</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="link-dialog">
+      <form method="dialog" class="modal-stack" id="link-form">
+        <label for="link-input">Font URL</label>
+        <input
+          id="link-input"
+          type="url"
+          placeholder="https://example.com/font.woff2"
+          required
+        />
+        <div id="link-status" aria-live="polite"></div>
+        <div class="modal-actions">
+          <button type="button" id="close-link-dialog">cancel</button>
+          <button type="submit" id="download-link-button">download</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="details-dialog">
+      <form method="dialog" class="modal-stack" id="details-form">
+        <div class="field-grid">
+          <label for="letters-descent-to-ascent">descent to ascent</label>
+          <textarea id="letters-descent-to-ascent"></textarea>
+        </div>
+        <div class="field-grid">
+          <label for="letters-baseline-to-ascent">baseline to ascent</label>
+          <textarea id="letters-baseline-to-ascent"></textarea>
+        </div>
+        <div class="field-grid">
+          <label for="letters-baseline-to-mean">baseline to mean</label>
+          <textarea id="letters-baseline-to-mean"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="cancel-details">cancel</button>
+          <button type="submit">save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="measurement-stage" aria-hidden="true">
+      <div id="measurement-line">
+        <span id="measurement-text"></span><span id="baseline-marker"></span>
+      </div>
+    </div>
+
+    <script>
+      const FONT_CANDIDATES = [
+        "Arial",
+        "Arial Black",
+        "Avenir",
+        "Avenir Next",
+        "Bahnschrift",
+        "Baskerville",
+        "Bembo",
+        "Book Antiqua",
+        "Bookman Old Style",
+        "Bradley Hand",
+        "Brush Script MT",
+        "Calibri",
+        "Cambria",
+        "Candara",
+        "Chalkboard",
+        "Chalkboard SE",
+        "Chalkduster",
+        "Charter",
+        "Cochin",
+        "Comic Sans MS",
+        "Consolas",
+        "Copperplate",
+        "Courier",
+        "Courier New",
+        "Didot",
+        "DIN Alternate",
+        "DIN Condensed",
+        "Franklin Gothic Medium",
+        "Futura",
+        "Futura Condensed",
+        "Garamond",
+        "Geneva",
+        "Georgia",
+        "Gill Sans",
+        "Helvetica",
+        "Helvetica Neue",
+        "Herculanum",
+        "Hoefler Text",
+        "Impact",
+        "Ink Free",
+        "Lato",
+        "Lucida Bright",
+        "Lucida Console",
+        "Lucida Grande",
+        "Lucida Sans Unicode",
+        "Marker Felt",
+        "Menlo",
+        "Monaco",
+        "Monotype Corsiva",
+        "MS Gothic",
+        "MS Mincho",
+        "Noto Sans",
+        "Noto Sans CJK JP",
+        "Noto Sans Mono",
+        "Noto Serif",
+        "Optima",
+        "Palatino",
+        "Palatino Linotype",
+        "Papyrus",
+        "Perpetua",
+        "Rockwell",
+        "Segoe Print",
+        "Segoe Script",
+        "Segoe UI",
+        "Segoe UI Variable",
+        "Skia",
+        "Snell Roundhand",
+        "Source Code Pro",
+        "Tahoma",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Trattatello",
+        "Ubuntu",
+        "Verdana",
+      ];
+
+      const DEFAULT_LETTER_SETS = {
+        "descent-to-ascent":
+          "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "baseline-to-ascent": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "baseline-to-mean": "acemorsuvwxz",
+      };
+
+      const state = {
+        detectedFonts: [],
+        selectedFont: "",
+        inputValue: "",
+        previewText: "Hamburgefontsiv",
+        metricMode: "descent-to-ascent",
+        letterSets: { ...DEFAULT_LETTER_SETS },
+        uploadedFontCount: 0,
+        metricsCache: new Map(),
+        activeOptionIndex: -1,
+      };
+
+      const elements = {
+        fontSearch: document.getElementById("font-search"),
+        fontToggle: document.getElementById("font-toggle"),
+        fontOptions: document.getElementById("font-options"),
+        uploadFileButton: document.getElementById("upload-file-button"),
+        uploadLinkButton: document.getElementById("upload-link-button"),
+        fileInput: document.getElementById("file-input"),
+        previewInput: document.getElementById("preview-input"),
+        metricMode: document.getElementById("metric-mode"),
+        editLetterSets: document.getElementById("edit-letter-sets"),
+        previewStage: document.getElementById("preview-stage"),
+        previewCanvas: document.getElementById("preview-canvas"),
+        statusNote: document.getElementById("status-note"),
+        errorDialog: document.getElementById("error-dialog"),
+        errorMessage: document.getElementById("error-message"),
+        closeErrorDialog: document.getElementById("close-error-dialog"),
+        linkDialog: document.getElementById("link-dialog"),
+        linkForm: document.getElementById("link-form"),
+        linkInput: document.getElementById("link-input"),
+        linkStatus: document.getElementById("link-status"),
+        closeLinkDialog: document.getElementById("close-link-dialog"),
+        detailsDialog: document.getElementById("details-dialog"),
+        detailsForm: document.getElementById("details-form"),
+        cancelDetails: document.getElementById("cancel-details"),
+        lettersDescentToAscent: document.getElementById(
+          "letters-descent-to-ascent",
+        ),
+        lettersBaselineToAscent: document.getElementById(
+          "letters-baseline-to-ascent",
+        ),
+        lettersBaselineToMean: document.getElementById(
+          "letters-baseline-to-mean",
+        ),
+        measurementLine: document.getElementById("measurement-line"),
+        measurementText: document.getElementById("measurement-text"),
+        baselineMarker: document.getElementById("baseline-marker"),
+      };
+
+      const offscreenCanvas = document.createElement("canvas");
+      const offscreenContext = offscreenCanvas.getContext("2d", {
+        willReadFrequently: true,
+      });
+      let previewFrame = 0;
+
+      function quoteFont(fontName) {
+        return `"${String(fontName).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+      }
+
+      function fontStack(fontName) {
+        return `${quoteFont(fontName)}, sans-serif`;
+      }
+
+      function escapeHtml(text) {
+        return String(text)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function showError(message) {
+        elements.errorMessage.textContent = message;
+        elements.errorDialog.showModal();
+      }
+
+      function setStatus(message) {
+        elements.statusNote.textContent = message;
+      }
+
+      function clearMetricsCache() {
+        state.metricsCache.clear();
+      }
+
+      function detectFont(fontName) {
+        const testString = "mmmmmmmmmmlliWW00@@##";
+        const baseFonts = ["monospace", "serif", "sans-serif"];
+        const widths = {};
+        const size = "72px";
+
+        for (const base of baseFonts) {
+          offscreenContext.font = `${size} ${base}`;
+          widths[base] = offscreenContext.measureText(testString).width;
+        }
+
+        return baseFonts.some((base) => {
+          offscreenContext.font = `${size} ${quoteFont(fontName)}, ${base}`;
+          const width = offscreenContext.measureText(testString).width;
+          return width !== widths[base];
+        });
+      }
+
+      function updateFontList(fonts) {
+        state.detectedFonts = [...fonts].sort((a, b) => a.localeCompare(b));
+        renderFontOptions();
+      }
+
+      function renderFontOptions() {
+        const filter = state.inputValue.trim().toLowerCase();
+        const filtered = state.detectedFonts.filter((font) =>
+          font.toLowerCase().includes(filter),
+        );
+        const selectedIndex = filtered.indexOf(state.selectedFont);
+        if (!filtered.length) {
+          state.activeOptionIndex = -1;
+        } else if (
+          state.activeOptionIndex < 0 ||
+          state.activeOptionIndex >= filtered.length
+        ) {
+          state.activeOptionIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+
+        elements.fontOptions.innerHTML = filtered.length
+          ? filtered
+              .map((font, index) => {
+                const isSelected = font === state.selectedFont;
+                const isActive = index === state.activeOptionIndex;
+                return `<div class="combo-option" role="option" data-font="${escapeHtml(font)}" aria-selected="${isSelected}" id="font-option-${index}"${isActive ? ' data-active="true"' : ""}>${escapeHtml(font)}</div>`;
+              })
+              .join("")
+          : `<div class="combo-option" aria-selected="false">No matching fonts</div>`;
+
+        elements.fontSearch.setAttribute(
+          "aria-expanded",
+          String(!elements.fontOptions.hidden),
+        );
+        syncActiveDescendant();
+
+        const activeOption = elements.fontOptions.querySelector(
+          "[data-active='true']",
+        );
+        if (activeOption) {
+          activeOption.scrollIntoView({ block: "nearest" });
+        }
+      }
+
+      function syncActiveDescendant() {
+        if (state.activeOptionIndex >= 0 && !elements.fontOptions.hidden) {
+          elements.fontSearch.setAttribute(
+            "aria-activedescendant",
+            `font-option-${state.activeOptionIndex}`,
+          );
+        } else {
+          elements.fontSearch.removeAttribute("aria-activedescendant");
+        }
+      }
+
+      function openFontList() {
+        elements.fontOptions.hidden = false;
+        renderFontOptions();
+      }
+
+      function closeFontList() {
+        elements.fontOptions.hidden = true;
+        elements.fontSearch.setAttribute("aria-expanded", "false");
+        elements.fontSearch.removeAttribute("aria-activedescendant");
+      }
+
+      function selectFont(fontName, announce = true) {
+        state.selectedFont = fontName;
+        state.inputValue = fontName;
+        elements.fontSearch.value = fontName;
+        renderFontOptions();
+        schedulePreview();
+        if (announce) {
+          setStatus(`Selected ${fontName}.`);
+        }
+      }
+
+      function addDiscoveredFont(fontName) {
+        if (!state.detectedFonts.includes(fontName)) {
+          updateFontList([...state.detectedFonts, fontName]);
+        }
+      }
+
+      function getFilteredFonts() {
+        const filter = state.inputValue.trim().toLowerCase();
+        return state.detectedFonts.filter((font) =>
+          font.toLowerCase().includes(filter),
+        );
+      }
+
+      function commitCurrentInput() {
+        const match = state.detectedFonts.find(
+          (font) =>
+            font.toLowerCase() === state.inputValue.trim().toLowerCase(),
+        );
+        if (match) {
+          selectFont(match);
+          return true;
+        }
+
+        if (state.selectedFont) {
+          state.inputValue = state.selectedFont;
+          elements.fontSearch.value = state.selectedFont;
+        }
+
+        return false;
+      }
+
+      function measureTextWidth(fontName, text, fontSize) {
+        offscreenContext.font = `${fontSize}px ${fontStack(fontName)}`;
+        return offscreenContext.measureText(text || " ").width;
+      }
+
+      function getPreviewFontSize(fontName, previewText, mode) {
+        const horizontalPadding = 40;
+        const verticalPadding = 40;
+        const availableWidth = Math.max(
+          80,
+          elements.previewStage.clientWidth - horizontalPadding,
+        );
+        const availableHeight = Math.max(
+          80,
+          elements.previewStage.clientHeight - verticalPadding,
+        );
+
+        let low = 16;
+        let high = 180;
+        let best = low;
+
+        while (low <= high) {
+          const size = Math.floor((low + high) / 2);
+          const width = measureTextWidth(fontName, previewText, size);
+          const metrics = getModeMetrics(fontName, mode, size);
+          const previewInk = scanInkBounds(fontName, previewText, size);
+          const previewInkHeight = previewInk
+            ? previewInk.ascent + previewInk.descent
+            : 0;
+
+          if (
+            width <= availableWidth &&
+            metrics.modeHeight <= availableHeight &&
+            previewInkHeight <= availableHeight
+          ) {
+            best = size;
+            low = size + 1;
+          } else {
+            high = size - 1;
+          }
+        }
+
+        return best;
+      }
+
+      function scanInkBounds(fontName, sampleText, fontSize) {
+        const text = sampleText || " ";
+        const padding = Math.ceil(fontSize * 1.5);
+        offscreenContext.font = `${fontSize}px ${fontStack(fontName)}`;
+        offscreenContext.textBaseline = "alphabetic";
+
+        const metrics = offscreenContext.measureText(text);
+        const width = Math.max(1, Math.ceil(metrics.width + padding * 2));
+        const height = Math.max(1, Math.ceil(fontSize * 3));
+        const baselineY = padding;
+
+        offscreenCanvas.width = width;
+        offscreenCanvas.height = height;
+        offscreenContext.clearRect(0, 0, width, height);
+        offscreenContext.fillStyle = "#000000";
+        offscreenContext.font = `${fontSize}px ${fontStack(fontName)}`;
+        offscreenContext.textBaseline = "alphabetic";
+        offscreenContext.fillText(text, padding, baselineY);
+
+        const imageData = offscreenContext.getImageData(
+          0,
+          0,
+          width,
+          height,
+        ).data;
+        let top = -1;
+        let bottom = -1;
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            if (imageData[(y * width + x) * 4 + 3] > 0) {
+              top = y;
+              break;
+            }
+          }
+          if (top !== -1) {
+            break;
+          }
+        }
+
+        if (top === -1) {
+          return null;
+        }
+
+        for (let y = height - 1; y >= 0; y -= 1) {
+          for (let x = 0; x < width; x += 1) {
+            if (imageData[(y * width + x) * 4 + 3] > 0) {
+              bottom = y;
+              break;
+            }
+          }
+          if (bottom !== -1) {
+            break;
+          }
+        }
+
+        return {
+          ascent: baselineY - top,
+          descent: Math.max(0, bottom - baselineY + 1),
+        };
+      }
+
+      function getModeMetrics(fontName, mode, fontSize) {
+        const sampleText = state.letterSets[mode] || "";
+        const cacheKey = `${fontName}::${mode}::${fontSize}::${sampleText}`;
+
+        if (state.metricsCache.has(cacheKey)) {
+          return state.metricsCache.get(cacheKey);
+        }
+
+        const inkMetrics = scanInkBounds(fontName, sampleText, fontSize);
+
+        if (!inkMetrics) {
+          const fallback = {
+            ascent: fontSize * 0.8,
+            descent: fontSize * 0.2,
+            modeHeight: fontSize,
+          };
+          state.metricsCache.set(cacheKey, fallback);
+          return fallback;
+        }
+
+        const result = {
+          ascent: inkMetrics.ascent,
+          descent: inkMetrics.descent,
+          modeHeight: inkMetrics.ascent + inkMetrics.descent,
+        };
+
+        state.metricsCache.set(cacheKey, result);
+        return result;
+      }
+
+      function updatePreview() {
+        if (!state.selectedFont) {
+          return;
+        }
+
+        const previewText = state.previewText || " ";
+        const fontSize = getPreviewFontSize(
+          state.selectedFont,
+          previewText,
+          state.metricMode,
+        );
+        const metrics = getModeMetrics(
+          state.selectedFont,
+          state.metricMode,
+          fontSize,
+        );
+        const canvas = elements.previewCanvas;
+        const rect = elements.previewStage.getBoundingClientRect();
+        const width = Math.max(1, Math.floor(rect.width));
+        const height = Math.max(1, Math.floor(rect.height));
+        const dpr = window.devicePixelRatio || 1;
+        const context = canvas.getContext("2d");
+
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        context.clearRect(0, 0, width, height);
+
+        const centerY = height / 2;
+        const baselineY = centerY + (metrics.ascent - metrics.descent) / 2;
+        const textWidth = measureTextWidth(state.selectedFont, previewText, fontSize);
+        const boxX = (width - textWidth) / 2;
+        const boxY = baselineY - metrics.ascent;
+
+        context.fillStyle = "#f5f5f5";
+        context.strokeStyle = "#000000";
+        context.lineWidth = 1;
+        context.fillRect(boxX, boxY, textWidth, metrics.modeHeight);
+        context.strokeRect(boxX, boxY, textWidth, metrics.modeHeight);
+
+        context.beginPath();
+        context.moveTo(0, centerY);
+        context.lineTo(width, centerY);
+        context.stroke();
+
+        context.font = `${fontSize}px ${fontStack(state.selectedFont)}`;
+        context.textAlign = "center";
+        context.textBaseline = "alphabetic";
+        context.fillStyle = "#000000";
+        context.fillText(previewText, width / 2, baselineY);
+      }
+
+      function schedulePreview() {
+        cancelAnimationFrame(previewFrame);
+        previewFrame = requestAnimationFrame(updatePreview);
+      }
+
+      function sanitizeFamilyName(rawName) {
+        return (
+          rawName
+            .replace(/\.[^.]+$/, "")
+            .replace(/[^a-zA-Z0-9 _-]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim() || "Uploaded Font"
+        );
+      }
+
+      function makeUniqueFamilyName(baseName) {
+        let name = baseName;
+        let suffix = 1;
+
+        while (state.detectedFonts.includes(name)) {
+          suffix += 1;
+          name = `${baseName} ${suffix}`;
+        }
+
+        return name;
+      }
+
+      async function loadFontFromBuffer(buffer, familyName) {
+        const fontFace = new FontFace(familyName, buffer);
+        await fontFace.load();
+        document.fonts.add(fontFace);
+        clearMetricsCache();
+        addDiscoveredFont(familyName);
+        selectFont(familyName, false);
+        setStatus(`Loaded ${familyName}.`);
+      }
+
+      async function handleFileUpload(file) {
+        try {
+          const familyName = makeUniqueFamilyName(
+            sanitizeFamilyName(file.name),
+          );
+          const buffer = await file.arrayBuffer();
+          await loadFontFromBuffer(buffer, familyName);
+        } catch (error) {
+          showError(
+            `Font upload failed. ${error instanceof Error ? error.message : "The file could not be loaded."}`,
+          );
+        }
+      }
+
+      async function handleLinkUpload(url) {
+        elements.linkStatus.textContent = "Downloading font...";
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Request returned ${response.status}.`);
+          }
+
+          const parsedUrl = new URL(url);
+          const filename =
+            parsedUrl.pathname.split("/").pop() || `remote-font-${Date.now()}`;
+          const familyName = makeUniqueFamilyName(sanitizeFamilyName(filename));
+          const buffer = await response.arrayBuffer();
+          await loadFontFromBuffer(buffer, familyName);
+          elements.linkStatus.textContent = "";
+          elements.linkDialog.close();
+          elements.linkInput.value = "";
+        } catch (error) {
+          elements.linkStatus.textContent = `Upload failed. ${error instanceof Error ? error.message : "The link could not be loaded."}`;
+        }
+      }
+
+      function fillLetterSetFields() {
+        elements.lettersDescentToAscent.value =
+          state.letterSets["descent-to-ascent"];
+        elements.lettersBaselineToAscent.value =
+          state.letterSets["baseline-to-ascent"];
+        elements.lettersBaselineToMean.value =
+          state.letterSets["baseline-to-mean"];
+      }
+
+      function installEvents() {
+        elements.fontSearch.addEventListener("focus", () => {
+          openFontList();
+        });
+
+        elements.fontSearch.addEventListener("input", () => {
+          state.inputValue = elements.fontSearch.value;
+          state.activeOptionIndex = -1;
+          openFontList();
+        });
+
+        elements.fontSearch.addEventListener("keydown", (event) => {
+          const filtered = getFilteredFonts();
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            openFontList();
+            if (!filtered.length) {
+              return;
+            }
+            state.activeOptionIndex = Math.min(
+              filtered.length - 1,
+              state.activeOptionIndex + 1,
+            );
+            renderFontOptions();
+            return;
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            openFontList();
+            if (!filtered.length) {
+              return;
+            }
+            state.activeOptionIndex = Math.max(0, state.activeOptionIndex - 1);
+            renderFontOptions();
+            return;
+          }
+
+          if (event.key === "Enter") {
+            if (
+              !elements.fontOptions.hidden &&
+              state.activeOptionIndex >= 0 &&
+              filtered[state.activeOptionIndex]
+            ) {
+              event.preventDefault();
+              selectFont(filtered[state.activeOptionIndex]);
+              closeFontList();
+            } else {
+              commitCurrentInput();
+              closeFontList();
+            }
+            return;
+          }
+
+          if (event.key === "Escape") {
+            closeFontList();
+          }
+        });
+
+        elements.fontSearch.addEventListener("blur", () => {
+          requestAnimationFrame(() => {
+            if (!elements.fontOptions.contains(document.activeElement)) {
+              commitCurrentInput();
+              closeFontList();
+            }
+          });
+        });
+
+        elements.fontToggle.addEventListener("click", () => {
+          if (elements.fontOptions.hidden) {
+            openFontList();
+            elements.fontSearch.focus();
+          } else {
+            closeFontList();
+          }
+        });
+
+        elements.fontOptions.addEventListener("mousedown", (event) => {
+          const option = event.target.closest("[data-font]");
+          if (!option) {
+            return;
+          }
+          event.preventDefault();
+          selectFont(option.dataset.font);
+          closeFontList();
+        });
+
+        document.addEventListener("click", (event) => {
+          if (!event.target.closest(".combo")) {
+            closeFontList();
+          }
+        });
+
+        elements.uploadFileButton.addEventListener("click", () => {
+          elements.fileInput.click();
+        });
+
+        elements.fileInput.addEventListener("change", async () => {
+          const [file] = elements.fileInput.files || [];
+          if (file) {
+            await handleFileUpload(file);
+          }
+          elements.fileInput.value = "";
+        });
+
+        elements.uploadLinkButton.addEventListener("click", () => {
+          elements.linkStatus.textContent = "";
+          elements.linkDialog.showModal();
+          requestAnimationFrame(() => elements.linkInput.focus());
+        });
+
+        elements.closeLinkDialog.addEventListener("click", () => {
+          elements.linkDialog.close();
+        });
+
+        elements.linkForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const url = elements.linkInput.value.trim();
+          if (!url) {
+            elements.linkStatus.textContent = "A URL is required.";
+            return;
+          }
+          await handleLinkUpload(url);
+        });
+
+        elements.closeErrorDialog.addEventListener("click", () => {
+          elements.errorDialog.close();
+        });
+
+        elements.previewInput.addEventListener("input", () => {
+          state.previewText = elements.previewInput.value;
+          schedulePreview();
+        });
+
+        elements.metricMode.addEventListener("change", () => {
+          state.metricMode = elements.metricMode.value;
+          schedulePreview();
+        });
+
+        elements.editLetterSets.addEventListener("click", () => {
+          fillLetterSetFields();
+          elements.detailsDialog.showModal();
+        });
+
+        elements.cancelDetails.addEventListener("click", () => {
+          elements.detailsDialog.close();
+        });
+
+        elements.detailsForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          state.letterSets["descent-to-ascent"] =
+            elements.lettersDescentToAscent.value;
+          state.letterSets["baseline-to-ascent"] =
+            elements.lettersBaselineToAscent.value;
+          state.letterSets["baseline-to-mean"] =
+            elements.lettersBaselineToMean.value;
+          clearMetricsCache();
+          elements.detailsDialog.close();
+          schedulePreview();
+        });
+
+        new ResizeObserver(() => {
+          schedulePreview();
+        }).observe(elements.previewStage);
+      }
+
+      async function bootstrap() {
+        installEvents();
+        setStatus("Detecting installed fonts...");
+
+        const detected = [];
+        for (const candidate of FONT_CANDIDATES) {
+          if (detectFont(candidate)) {
+            detected.push(candidate);
+          }
+        }
+
+        updateFontList(detected);
+
+        const defaultFont =
+          detected.find((font) =>
+            /^(Arial|Helvetica|Times New Roman|Georgia|Verdana|Tahoma|Segoe UI)$/i.test(
+              font,
+            ),
+          ) || detected[0];
+
+        if (defaultFont) {
+          selectFont(defaultFont, false);
+          setStatus(`Detected ${detected.length} fonts.`);
+        } else {
+          setStatus("No fonts were detected from the built-in test list.");
+        }
+      }
+
+      bootstrap();
+    </script>
+  </body>
+</html>
