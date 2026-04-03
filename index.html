@@ -38,7 +38,8 @@
       }
 
       .row.secondary {
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        display: flex;
+        align-items: stretch;
       }
 
       .combo {
@@ -52,7 +53,9 @@
       }
 
       .select-wrap {
-        position: relative;
+        display: grid;
+        grid-template-columns: auto 42px;
+        flex: 0 0 auto;
       }
 
       input,
@@ -72,6 +75,7 @@
       button {
         width: auto;
         cursor: pointer;
+        line-height: 1;
       }
 
       input:focus,
@@ -86,7 +90,7 @@
       .icon-button {
         width: 42px;
         min-width: 42px;
-        min-height: 42px;
+        height: 42px;
         padding: 0;
         display: grid;
         place-items: center;
@@ -96,19 +100,25 @@
         border-left: 0;
       }
 
+      .row.secondary > input {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
       .select-wrap select {
-        padding-right: 42px;
+        width: auto;
+        padding-right: 12px;
+        border-right: 0;
+        height: 42px;
       }
 
       .select-arrow {
-        position: absolute;
-        top: 0;
-        right: 0;
         width: 42px;
         height: 42px;
         display: grid;
         place-items: center;
-        border-left: 1px solid #000000;
+        border: 1px solid #000000;
+        border-left: 0;
         pointer-events: none;
       }
 
@@ -158,7 +168,16 @@
       }
 
       .note {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
         min-height: 20px;
+      }
+
+      .note-right {
+        text-align: right;
+        white-space: nowrap;
       }
 
       .sr-only {
@@ -226,12 +245,15 @@
       }
 
       @media (max-width: 720px) {
-        .row,
-        .row.secondary {
+        .row {
           grid-template-columns: minmax(0, 1fr) auto;
         }
 
-        .row > .combo,
+        .row.secondary {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+        }
+
         .row.secondary > input,
         .row.secondary > .select-wrap {
           grid-column: 1 / -1;
@@ -389,7 +411,10 @@
           </button>
         </div>
 
-        <div class="note" id="status-note" aria-live="polite"></div>
+        <div class="note" aria-live="polite">
+          <div id="status-note"></div>
+          <div class="note-right" id="status-metrics"></div>
+        </div>
 
         <div class="preview" id="preview-stage">
           <canvas id="preview-canvas"></canvas>
@@ -539,7 +564,7 @@
       const DEFAULT_LETTER_SETS = {
         "descent-to-ascent":
           "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-        "baseline-to-ascent": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "baseline-to-ascent": "ABCDEFGHIJKLMNOPRSTUVWXYZ",
         "baseline-to-mean": "acemorsuvwxz",
       };
 
@@ -568,6 +593,7 @@
         previewStage: document.getElementById("preview-stage"),
         previewCanvas: document.getElementById("preview-canvas"),
         statusNote: document.getElementById("status-note"),
+        statusMetrics: document.getElementById("status-metrics"),
         errorDialog: document.getElementById("error-dialog"),
         errorMessage: document.getElementById("error-message"),
         closeErrorDialog: document.getElementById("close-error-dialog"),
@@ -622,6 +648,10 @@
 
       function setStatus(message) {
         elements.statusNote.textContent = message;
+      }
+
+      function setStatusMetrics(message) {
+        elements.statusMetrics.textContent = message;
       }
 
       function clearMetricsCache() {
@@ -754,9 +784,47 @@
         return false;
       }
 
-      function measureTextWidth(fontName, text, fontSize) {
+      function measureTextMetrics(fontName, text, fontSize) {
+        const value = text || " ";
         offscreenContext.font = `${fontSize}px ${fontStack(fontName)}`;
-        return offscreenContext.measureText(text || " ").width;
+        offscreenContext.textBaseline = "alphabetic";
+
+        const metrics = offscreenContext.measureText(value);
+        const left = Number.isFinite(metrics.actualBoundingBoxLeft)
+          ? metrics.actualBoundingBoxLeft
+          : 0;
+        const right = Number.isFinite(metrics.actualBoundingBoxRight)
+          ? metrics.actualBoundingBoxRight
+          : metrics.width;
+        const ascent = Number.isFinite(metrics.actualBoundingBoxAscent)
+          ? metrics.actualBoundingBoxAscent
+          : NaN;
+        const descent = Number.isFinite(metrics.actualBoundingBoxDescent)
+          ? metrics.actualBoundingBoxDescent
+          : NaN;
+
+        if (
+          Number.isFinite(ascent) &&
+          Number.isFinite(descent) &&
+          (ascent > 0 || descent > 0)
+        ) {
+          return {
+            width: left + right,
+            left,
+            right,
+            ascent,
+            descent,
+          };
+        }
+
+        const scanned = scanInkBounds(fontName, value, fontSize);
+        return {
+          width: metrics.width,
+          left: 0,
+          right: metrics.width,
+          ascent: scanned ? scanned.ascent : fontSize * 0.8,
+          descent: scanned ? scanned.descent : fontSize * 0.2,
+        };
       }
 
       function getPreviewFontSize(fontName, previewText, mode) {
@@ -777,15 +845,13 @@
 
         while (low <= high) {
           const size = Math.floor((low + high) / 2);
-          const width = measureTextWidth(fontName, previewText, size);
+          const previewMetrics = measureTextMetrics(fontName, previewText, size);
           const metrics = getModeMetrics(fontName, mode, size);
-          const previewInk = scanInkBounds(fontName, previewText, size);
-          const previewInkHeight = previewInk
-            ? previewInk.ascent + previewInk.descent
-            : 0;
+          const previewInkHeight =
+            previewMetrics.ascent + previewMetrics.descent;
 
           if (
-            width <= availableWidth &&
+            previewMetrics.width <= availableWidth &&
             metrics.modeHeight <= availableHeight &&
             previewInkHeight <= availableHeight
           ) {
@@ -869,18 +935,7 @@
           return state.metricsCache.get(cacheKey);
         }
 
-        const inkMetrics = scanInkBounds(fontName, sampleText, fontSize);
-
-        if (!inkMetrics) {
-          const fallback = {
-            ascent: fontSize * 0.8,
-            descent: fontSize * 0.2,
-            modeHeight: fontSize,
-          };
-          state.metricsCache.set(cacheKey, fallback);
-          return fallback;
-        }
-
+        const inkMetrics = measureTextMetrics(fontName, sampleText, fontSize);
         const result = {
           ascent: inkMetrics.ascent,
           descent: inkMetrics.descent,
@@ -893,6 +948,7 @@
 
       function updatePreview() {
         if (!state.selectedFont) {
+          setStatusMetrics("");
           return;
         }
 
@@ -921,15 +977,25 @@
 
         const centerY = height / 2;
         const baselineY = centerY + (metrics.ascent - metrics.descent) / 2;
-        const textWidth = measureTextWidth(state.selectedFont, previewText, fontSize);
-        const boxX = (width - textWidth) / 2;
+        const offsetPx = baselineY - centerY;
+        const offsetPercent = metrics.modeHeight
+          ? (offsetPx / metrics.modeHeight) * 100
+          : 0;
+        const previewMetrics = measureTextMetrics(
+          state.selectedFont,
+          previewText,
+          fontSize,
+        );
+        const drawX =
+          width / 2 + (previewMetrics.left - previewMetrics.right) / 2;
+        const boxX = drawX - previewMetrics.left;
         const boxY = baselineY - metrics.ascent;
 
         context.fillStyle = "#f5f5f5";
         context.strokeStyle = "#000000";
         context.lineWidth = 1;
-        context.fillRect(boxX, boxY, textWidth, metrics.modeHeight);
-        context.strokeRect(boxX, boxY, textWidth, metrics.modeHeight);
+        context.fillRect(boxX, boxY, previewMetrics.width, metrics.modeHeight);
+        context.strokeRect(boxX, boxY, previewMetrics.width, metrics.modeHeight);
 
         context.beginPath();
         context.moveTo(0, centerY);
@@ -937,10 +1003,14 @@
         context.stroke();
 
         context.font = `${fontSize}px ${fontStack(state.selectedFont)}`;
-        context.textAlign = "center";
+        context.textAlign = "left";
         context.textBaseline = "alphabetic";
         context.fillStyle = "#000000";
-        context.fillText(previewText, width / 2, baselineY);
+        context.fillText(previewText, drawX, baselineY);
+
+        setStatusMetrics(
+          `offset ${offsetPx.toFixed(2)}px | ${offsetPercent.toFixed(2)}%`,
+        );
       }
 
       function schedulePreview() {
